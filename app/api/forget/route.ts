@@ -16,34 +16,38 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    console.log(`[Forget] Attempting to delete chunks for file: ${filename}`)
+    console.log(`[Forget] Attempting to delete file: ${filename}`)
 
-    // First, get the storage path before deleting chunks
-    const { data: chunks, error: fetchError } = await supabase
-      .from('chunks_table')
-      .select('metadata')
-      .eq('metadata->>filename', filename)
-      .limit(1)
+    // Fetch the trained_files row so we have the storage_path
+    const { data: trainedFile, error: fetchError } = await supabase
+      .from('trained_files')
+      .select('id, storage_path')
+      .eq('filename', filename)
+      .maybeSingle()
 
-    const storagePath = (chunks as any)?.[0]?.metadata?.storage_path
+    if (fetchError) {
+      console.error('[Forget] Error fetching trained_files row:', fetchError)
+    }
 
-    // Delete all chunks with matching filename in metadata
+    const storagePath = trainedFile?.storage_path || null
+
+    // Delete from trained_files — ON DELETE CASCADE removes all sentences in chunks_table
     const { data, error } = await supabase
-      .from('chunks_table')
+      .from('trained_files')
       .delete()
-      .eq('metadata->>filename', filename)
+      .eq('filename', filename)
       .select()
 
     if (error) {
-      console.error('[Forget] Error deleting chunks:', error)
+      console.error('[Forget] Error deleting trained_files row:', error)
       return NextResponse.json(
-        { error: 'Failed to delete chunks: ' + error.message },
+        { error: 'Failed to delete file: ' + error.message },
         { status: 500 }
       )
     }
 
-    const deletedCount = data?.length || 0
-    console.log(`[Forget] Successfully deleted ${deletedCount} chunks for file: ${filename}`)
+    const deletedFiles = data?.length || 0
+    console.log(`[Forget] Deleted trained_files row for: ${filename} (cascaded sentences removed)`)
 
     // Delete the original file from storage if it exists (with timeout protection)
     let storageDeleted = false
@@ -79,8 +83,8 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Successfully deleted ${deletedCount} chunks from "${filename}"${storagePath && !storageDeleted ? ' (storage file deletion may have failed)' : ''}`,
-      deletedCount,
+      message: `Successfully deleted "${filename}" and all its sentences${storagePath && !storageDeleted ? ' (storage file deletion may have failed)' : ''}`,
+      deletedFiles,
       filename,
       storageDeleted,
     })

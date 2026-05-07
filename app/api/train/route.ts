@@ -5,160 +5,39 @@ import pdf from 'pdf-parse'
 import { extractTextFromPDFImages } from '@/lib/ocr'
 
 /**
- * Chunk text by words (word-by-word extraction)
+ * Extract sentences from text — the only storage unit.
+ * Each sentence will be stored as its own chunk linked to a trained_files row.
  */
-function chunkByWords(text: string): string[] {
-  const chunks: string[] = []
-
-  // Split by whitespace and punctuation, keeping meaningful words
-  const words = text
-    .replace(/[\r\n]+/g, ' ') // Replace newlines with spaces
-    .split(/[\s,.!?;:()\[\]{}"']+/) // Split by spaces and punctuation
-    .map(w => w.trim())
-    .filter(w => w.length > 0)
-
-  for (const word of words) {
-    // Skip very short words and common words
-    if (word.length >= 2 && !isCommonWord(word.toLowerCase())) {
-      chunks.push(word)
-    }
-  }
-
-  // Remove duplicates
-  return Array.from(new Set(chunks))
-}
-
-/**
- * Chunk text by sentences (sentence-by-sentence extraction)
- */
-function chunkBySentences(text: string): string[] {
-  const chunks: string[] = []
-
-  // Split by sentence-ending punctuation (. ! ? and also handle ellipsis, etc.)
+function extractSentences(text: string): string[] {
   const sentences = text
-    .replace(/([.!?])\s+/g, '$1|') // Mark sentence boundaries
-    .replace(/\.{3,}/g, '...|') // Handle ellipsis
-    .split('|')
+    .replace(/\r\n|\r/g, '\n')
+    .replace(/([.!?])\s+/g, '$1\n')
+    .replace(/\.{3,}/g, '...\n')
+    .split('\n')
     .map(s => s.trim())
-    .filter(s => s.length > 0)
+    .filter(s => s.length >= 10)
 
-  for (const sentence of sentences) {
-    // Skip very short sentences
-    if (sentence.length >= 3) {
-      chunks.push(sentence)
-    }
-  }
-
-  // Remove duplicates
-  return Array.from(new Set(chunks))
+  return Array.from(new Set(sentences))
 }
 
 /**
- * Chunk text into individual sentences and important words/phrases (default/smart mode)
- * This creates more precise autocomplete suggestions
+ * Build a short description from the first few sentences of the file,
+ * so the AI knows what the file is about without reading every sentence.
  */
-function chunkText(text: string, chunkType: 'word' | 'sentence' | 'smart' = 'smart'): string[] {
-  // Use specific chunking strategy if requested
-  if (chunkType === 'word') {
-    return chunkByWords(text)
+function buildDescription(text: string, maxLength = 300): string {
+  const sentences = extractSentences(text)
+  let description = ''
+  for (const sentence of sentences.slice(0, 5)) {
+    if (description.length + sentence.length > maxLength) break
+    description += (description ? ' ' : '') + sentence
   }
-
-  if (chunkType === 'sentence') {
-    return chunkBySentences(text)
-  }
-
-  // Smart mode: extract sentences, words, and phrases
-  const chunks: string[] = []
-
-  // Split into sentences (keeping the punctuation)
-  const sentences = text.match(/[^.!?]+[.!?]+/g) || []
-
-  for (const sentence of sentences) {
-    const trimmed = sentence.trim()
-
-    // Skip very short or empty sentences
-    if (trimmed.length < 3) continue
-
-    // Add the complete sentence as a chunk
-    chunks.push(trimmed)
-
-    // Extract important words and phrases from the sentence
-    // Remove punctuation and split into words
-    const words = trimmed
-      .replace(/[^\w\s'-]/g, '') // Keep hyphens and apostrophes
-      .split(/\s+/)
-      .filter(word => word.length > 0)
-
-    // Add individual significant words (length >= 4)
-    for (const word of words) {
-      if (word.length >= 4 && !isCommonWord(word.toLowerCase())) {
-        chunks.push(word)
-      }
-    }
-
-    // Add 2-3 word phrases
-    for (let i = 0; i < words.length - 1; i++) {
-      const twoWordPhrase = words[i] + ' ' + words[i + 1]
-      if (twoWordPhrase.length >= 8) {
-        chunks.push(twoWordPhrase)
-      }
-
-      if (i < words.length - 2) {
-        const threeWordPhrase = words[i] + ' ' + words[i + 1] + ' ' + words[i + 2]
-        if (threeWordPhrase.length >= 12) {
-          chunks.push(threeWordPhrase)
-        }
-      }
-    }
-  }
-
-  // Remove duplicates while preserving order
-  return Array.from(new Set(chunks))
-}
-
-/**
- * Check if a word is too common to be useful for autocomplete
- */
-function isCommonWord(word: string): boolean {
-  const commonWords = new Set([
-    'the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i',
-    'it', 'for', 'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at',
-    'this', 'but', 'his', 'by', 'from', 'they', 'we', 'say', 'her', 'she',
-    'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there', 'their', 'what',
-    'so', 'up', 'out', 'if', 'about', 'who', 'get', 'which', 'go', 'me',
-    'when', 'make', 'can', 'like', 'time', 'no', 'just', 'him', 'know', 'take',
-    'into', 'year', 'your', 'good', 'some', 'could', 'them', 'see', 'other', 'than',
-    'then', 'now', 'look', 'only', 'come', 'its', 'over', 'think', 'also', 'back',
-    'after', 'use', 'two', 'how', 'our', 'work', 'first', 'well', 'way', 'even',
-    'new', 'want', 'because', 'any', 'these', 'give', 'day', 'most', 'us', 'is',
-    'was', 'are', 'been', 'has', 'had', 'were', 'said', 'did', 'am', 'very'
-  ])
-
-  return commonWords.has(word)
-}
-
-/**
- * Categorize chunk type for better matching
- */
-function categorizeChunk(text: string): 'word' | 'phrase' | 'sentence' {
-  const trimmed = text.trim()
-  const wordCount = trimmed.split(/\s+/).length
-  const hasPunctuation = /[.!?]$/.test(trimmed)
-
-  if (wordCount === 1) {
-    return 'word'
-  } else if (wordCount <= 3 && !hasPunctuation) {
-    return 'phrase'
-  } else {
-    return 'sentence'
-  }
+  return description || text.substring(0, maxLength).trim()
 }
 
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
     const file = formData.get('file') as File
-    const chunkTypeParam = formData.get('chunkType') as string
 
     if (!file) {
       return NextResponse.json(
@@ -167,262 +46,238 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check file size limit (50MB for larger document training)
-    const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB in bytes
+    const MAX_FILE_SIZE = 50 * 1024 * 1024
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
-        {
-          error: `File size (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds the maximum limit of 50MB`
-        },
+        { error: `File size (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds the maximum limit of 50MB` },
         { status: 400 }
       )
     }
 
-    // Parse chunk type (default to 'smart')
-    const chunkType = (['word', 'sentence', 'smart'].includes(chunkTypeParam))
-      ? chunkTypeParam as 'word' | 'sentence' | 'smart'
-      : 'smart'
+    console.log(`[Train] File: "${file.name}", size: ${(file.size / (1024 * 1024)).toFixed(1)}MB`)
 
-    console.log(`[Train] Using chunking strategy: ${chunkType}`)
-    console.log(`[Train] File size: ${(file.size / (1024 * 1024)).toFixed(1)}MB`)
-
-    // Track OCR statistics
-    let ocrStats = {
-      imagesProcessed: 0,
-      charactersExtracted: 0,
-      provider: 'none' as string
-    }
-
-    // Check if this is a manual training file (should be appended)
+    let ocrStats = { imagesProcessed: 0, charactersExtracted: 0, provider: 'none' as string }
     const isManualTraining = file.name === 'manual-training.txt'
 
-    // If it's manual training, get existing content first (before deleting)
+    // For manual training, gather existing sentences before wiping the old entry
     let existingManualContent = ''
     if (isManualTraining) {
       console.log('[Train] Checking for existing manual training data...')
+      const { data: existingFile } = await supabase
+        .from('trained_files')
+        .select('id')
+        .eq('filename', file.name)
+        .maybeSingle()
 
-      const { data: existingChunks } = await supabase
-        .from('chunks_table')
-        .select('content')
-        .eq('metadata->>filename', file.name)
-        .order('metadata->>chunk_index', { ascending: true })
-
-      if (existingChunks && existingChunks.length > 0) {
-        existingManualContent = existingChunks.map((c: any) => c.content).join('\n\n')
-        console.log(`[Train] Found existing content: ${existingManualContent.length} characters`)
-
-        // Delete old chunks so we can re-chunk the combined content
-        await supabase
+      if (existingFile?.id) {
+        const { data: existingChunks } = await supabase
           .from('chunks_table')
-          .delete()
-          .eq('metadata->>filename', file.name)
+          .select('content')
+          .eq('file_id', existingFile.id)
+          .order('metadata->chunk_index' as any, { ascending: true })
+
+        if (existingChunks && existingChunks.length > 0) {
+          existingManualContent = existingChunks.map((c: any) => c.content).join('\n')
+          console.log(`[Train] Found ${existingChunks.length} existing sentences to carry forward`)
+          // Deleting trained_files row cascades to chunks_table via file_id FK
+          await supabase.from('trained_files').delete().eq('id', existingFile.id)
+        }
       }
     }
 
-    // Upload original file to Supabase Storage first
+    // Upload original file to Supabase Storage
     const fileBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(fileBuffer)
-
-    const timestamp = new Date().getTime()
+    const timestamp = Date.now()
     const sanitizedFilename = file.name.replace(/[^a-zA-Z0-9.-]/g, '_')
     const storageFilename = `${timestamp}-${sanitizedFilename}`
 
-    console.log(`Uploading original file to storage: ${storageFilename}`)
-
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('training-files')
-      .upload(storageFilename, buffer, {
-        contentType: file.type,
-        cacheControl: '3600',
-        upsert: true,
-      })
+      .upload(storageFilename, buffer, { contentType: file.type, cacheControl: '3600', upsert: true })
 
     if (uploadError) {
-      console.error('Error uploading file to storage:', uploadError)
-      // Continue processing even if upload fails, but log the error
+      console.error('[Train] Storage upload error:', uploadError)
     } else {
-      console.log('File uploaded successfully to storage:', uploadData.path)
+      console.log('[Train] File uploaded to storage:', uploadData.path)
     }
 
+    // Extract raw text
     let extractedText = ''
 
-    // Handle PDF files
     if (file.type === 'application/pdf') {
-      // Use the already loaded buffer
-
       console.log('[Train] Extracting text from PDF...')
-
-      // Extract regular text from PDF
-      const data = await pdf(buffer)
-      extractedText = data.text
-
+      const pdfData = await pdf(buffer)
+      extractedText = pdfData.text
       console.log(`[Train] Extracted ${extractedText.length} characters from PDF text`)
 
-      // Extract text from images using OCR
       console.log('[Train] Starting OCR on PDF images...')
       const ocrResult = await extractTextFromPDFImages(buffer)
-
-      // Store OCR stats
       ocrStats = {
         imagesProcessed: ocrResult.imagesProcessed,
         charactersExtracted: ocrResult.charactersExtracted,
-        provider: ocrResult.provider
+        provider: ocrResult.provider,
       }
-
-      if (ocrResult.text && ocrResult.text.length > 0) {
-        console.log(`[Train] OCR (${ocrResult.provider}) extracted ${ocrResult.charactersExtracted} characters from ${ocrResult.imagesProcessed} images`)
+      if (ocrResult.text?.length > 0) {
+        console.log(`[Train] OCR extracted ${ocrResult.charactersExtracted} characters from ${ocrResult.imagesProcessed} images`)
         extractedText += '\n\n' + ocrResult.text
-      } else {
-        console.log('[Train] No text extracted from images (or no images found)')
       }
-
       console.log(`[Train] Total extracted text: ${extractedText.length} characters`)
-    }
-    // Handle plain text files
-    else if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
+    } else if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
       const newText = await file.text()
-
-      // If manual training, append to existing content
-      if (isManualTraining && existingManualContent) {
-        extractedText = existingManualContent + '\n\n' + newText
-        console.log('[Train] Appended new content to existing manual training data')
-      } else {
-        extractedText = newText
-      }
-    }
-    // Unsupported file type
-    else {
+      extractedText = isManualTraining && existingManualContent
+        ? existingManualContent + '\n' + newText
+        : newText
+    } else {
       return NextResponse.json(
         { error: 'Only PDF and text files are supported' },
         { status: 400 }
       )
     }
 
-    if (!extractedText || extractedText.trim().length === 0) {
+    if (!extractedText?.trim()) {
       return NextResponse.json(
         { error: 'No text could be extracted from the file' },
         { status: 400 }
       )
     }
 
-    // Chunk the text using the selected strategy
-    const chunks = chunkText(extractedText, chunkType)
+    // Extract sentences — the only unit we store
+    const sentences = extractSentences(extractedText)
+    console.log(`[Train] Extracted ${sentences.length} sentences`)
 
-    console.log(`Extracted text length: ${extractedText.length}`)
-    console.log(`Created ${chunks.length} chunks from text using '${chunkType}' strategy`)
-    if (chunks.length > 0) {
-      console.log(`First chunk preview: ${chunks[0].substring(0, 100)}...`)
-    }
-
-    if (chunks.length === 0) {
+    if (sentences.length === 0) {
       return NextResponse.json(
-        { error: 'Failed to create text chunks' },
+        { error: 'No sentences could be extracted from the file' },
         { status: 400 }
       )
     }
 
-    // Process chunks in batches to avoid timeout
-    const BATCH_SIZE = 50 // Process 50 chunks at a time
-    const TIMEOUT_THRESHOLD = 50000 // 50 seconds (leave 10s buffer for 60s timeout)
-    const startTime = Date.now()
+    // Auto-generate a description so the AI knows what this file contains
+    const description = buildDescription(extractedText)
+    const uploadedAt = new Date().toISOString()
 
-    const insertedChunks = []
+    // Create the trained_files row first — every sentence will reference it
+    const { data: trainedFile, error: fileInsertError } = await supabase
+      .from('trained_files')
+      .insert({
+        filename: file.name,
+        storage_path: uploadData?.path || null,
+        file_type: file.type,
+        file_size: file.size,
+        description,
+        uploaded_at: uploadedAt,
+      })
+      .select('id')
+      .single()
+
+    if (fileInsertError || !trainedFile) {
+      console.error('[Train] Failed to create trained_files row:', fileInsertError)
+      return NextResponse.json({ error: 'Failed to register file in database' }, { status: 500 })
+    }
+
+    const fileId = trainedFile.id
+    console.log(`[Train] Created trained_files row id=${fileId}`)
+
+    // Process sentences in batches
+    const BATCH_SIZE = 50
+    const TIMEOUT_THRESHOLD = 50000
+    const startTime = Date.now()
+    const insertedChunks: any[] = []
     let processedCount = 0
 
-    // Process in batches
-    for (let batchStart = 0; batchStart < chunks.length; batchStart += BATCH_SIZE) {
-      // Check if we're approaching timeout
-      const elapsedTime = Date.now() - startTime
-      if (elapsedTime > TIMEOUT_THRESHOLD) {
-        console.log(`[Train] Approaching timeout after ${elapsedTime}ms, stopping at chunk ${processedCount}/${chunks.length}`)
+    for (let batchStart = 0; batchStart < sentences.length; batchStart += BATCH_SIZE) {
+      if (Date.now() - startTime > TIMEOUT_THRESHOLD) {
+        console.log(`[Train] Timeout after ${processedCount}/${sentences.length} sentences`)
+        const charsSoFar = insertedChunks.reduce((s, c) => s + (c?.content?.length ?? 0), 0)
+        await supabase
+          .from('trained_files')
+          .update({ sentence_count: insertedChunks.length, character_count: charsSoFar })
+          .eq('id', fileId)
 
         return NextResponse.json({
           success: true,
           partial: true,
-          message: `Processed ${processedCount} of ${chunks.length} chunks (timeout limit reached). Please re-upload to continue processing remaining chunks.`,
-          chunks: insertedChunks.length,
+          message: `Processed ${processedCount} of ${sentences.length} sentences (timeout). Re-upload to continue.`,
+          sentences: insertedChunks.length,
           filename: file.name,
           processed: processedCount,
-          total: chunks.length,
-          remaining: chunks.length - processedCount,
+          total: sentences.length,
+          remaining: sentences.length - processedCount,
         })
       }
 
-      const batchEnd = Math.min(batchStart + BATCH_SIZE, chunks.length)
-      const batchChunks = chunks.slice(batchStart, batchEnd)
+      const batchEnd = Math.min(batchStart + BATCH_SIZE, sentences.length)
+      const batch = sentences.slice(batchStart, batchEnd)
+      console.log(`[Train] Batch ${Math.floor(batchStart / BATCH_SIZE) + 1}: sentences ${batchStart + 1}-${batchEnd}`)
 
-      console.log(`[Train] Processing batch ${Math.floor(batchStart / BATCH_SIZE) + 1}: chunks ${batchStart + 1}-${batchEnd} of ${chunks.length}`)
+      const batchResults = await Promise.all(
+        batch.map(async (sentence, idx) => {
+          const i = batchStart + idx
+          try {
+            const embedding = await generateEmbedding(sentence)
+            const { data, error } = await supabase
+              .from('chunks_table')
+              .insert({
+                content: sentence,
+                embedding,
+                file_id: fileId,
+                metadata: {
+                  filename: file.name,
+                  storage_path: uploadData?.path || null,
+                  file_type: file.type,
+                  file_size: file.size,
+                  chunk_index: i,
+                  chunk_type: 'sentence',
+                  chunk_strategy: 'sentence',
+                  total_chunks: sentences.length,
+                  characters: sentence.length,
+                  uploaded_at: uploadedAt,
+                },
+              } as any)
+              .select('id, content')
+              .single()
 
-      // Process batch chunks in parallel for speed
-      const batchPromises = batchChunks.map(async (chunk, batchIndex) => {
-        const i = batchStart + batchIndex
-
-        try {
-          // Generate embedding using OpenAI
-          const embedding = await generateEmbedding(chunk)
-
-          // Categorize chunk type
-          const chunkCategory = categorizeChunk(chunk)
-
-          // Insert into Supabase
-          const { data, error }: { data: any, error: any } = await supabase
-            .from('chunks_table')
-            .insert({
-              content: chunk,
-              embedding: embedding,
-              metadata: {
-                filename: file.name,
-                storage_path: uploadData?.path || null,
-                file_type: file.type,
-                file_size: file.size,
-                chunk_index: i,
-                chunk_type: chunkCategory,
-                chunk_strategy: chunkType,
-                total_chunks: chunks.length,
-                characters: chunk.length,
-                uploaded_at: new Date().toISOString(),
-              },
-            } as any)
-            .select()
-            .single()
-
-          if (error) {
-            console.error(`Error inserting chunk ${i + 1}:`, error)
+            if (error) { console.error(`[Train] Error inserting sentence ${i + 1}:`, error); return null }
+            return data
+          } catch (err) {
+            console.error(`[Train] Error processing sentence ${i + 1}:`, err)
             return null
           }
+        })
+      )
 
-          return data
-        } catch (error) {
-          console.error(`Error processing chunk ${i + 1}:`, error)
-          return null
-        }
-      })
-
-      // Wait for batch to complete
-      const batchResults = await Promise.all(batchPromises)
-      const successfulInserts = batchResults.filter(r => r !== null)
-      insertedChunks.push(...successfulInserts)
-      processedCount += batchChunks.length
-
-      console.log(`[Train] Batch complete: ${successfulInserts.length}/${batchChunks.length} successful, total: ${insertedChunks.length}/${chunks.length}`)
+      const successful = batchResults.filter(r => r !== null)
+      insertedChunks.push(...successful)
+      processedCount += batch.length
+      console.log(`[Train] Batch done: ${successful.length}/${batch.length} ok, total ${insertedChunks.length}`)
     }
 
-    const finalElapsedTime = Date.now() - startTime
-    console.log(`[Train] Completed processing ${insertedChunks.length} chunks in ${finalElapsedTime}ms`)
+    // Update sentence_count and character_count on the trained_files row
+    const totalCharacters = insertedChunks.reduce((s, c) => s + (c?.content?.length ?? 0), 0)
+    await supabase
+      .from('trained_files')
+      .update({ sentence_count: insertedChunks.length, character_count: totalCharacters })
+      .eq('id', fileId)
+
+    const elapsed = Date.now() - startTime
+    console.log(`[Train] Done: ${insertedChunks.length} sentences in ${elapsed}ms`)
 
     return NextResponse.json({
       success: true,
-      message: `Successfully processed ${insertedChunks.length} out of ${chunks.length} chunks`,
-      chunks: insertedChunks.length,
+      message: `Successfully stored ${insertedChunks.length} sentences from "${file.name}"`,
+      sentences: insertedChunks.length,
       filename: file.name,
-      processingTime: finalElapsedTime,
-      ocr: ocrStats, // Include OCR statistics
+      fileId,
+      description,
+      processingTime: elapsed,
+      ocr: ocrStats,
     })
 
   } catch (error) {
-    console.error('Training error:', error)
+    console.error('[Train] Error:', error)
     return NextResponse.json(
-      { error: 'Failed to process PDF file' },
+      { error: 'Failed to process file' },
       { status: 500 }
     )
   }

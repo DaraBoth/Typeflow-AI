@@ -46,9 +46,15 @@ export async function POST(request: NextRequest) {
           usedKnowledgeBase = true
           matches = chunks
 
-          // Combine relevant chunks into context
+          // Build context with file source metadata so the AI knows where each sentence came from
           context = chunks
-            .map((chunk: any, index: number) => `[${index + 1}] ${chunk.content}`)
+            .map((chunk: any, index: number) => {
+              const uploadedDate = chunk.uploaded_at
+                ? new Date(chunk.uploaded_at).toLocaleDateString()
+                : 'unknown date'
+              const sourceLine = `[Source: ${chunk.filename || 'unknown'} | Uploaded: ${uploadedDate}${chunk.file_description ? ` | About: ${chunk.file_description}` : ''}]`
+              return `[${index + 1}] ${sourceLine}\n${chunk.content}`
+            })
             .join('\n\n')
         }
       }
