@@ -58,7 +58,6 @@ export default function TrainingTab() {
   const [viewingFile, setViewingFile] = useState<{ filename: string; content: string; metadata: any } | null>(null)
   const [loadingView, setLoadingView] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
-  const [chunkStrategy, setChunkStrategy] = useState<'word' | 'sentence' | 'smart'>('smart')
   const [activeFiles, setActiveFiles] = useState<ActiveFile[]>([])
   const [googleDocsUrl, setGoogleDocsUrl] = useState('')
   const [importingUrl, setImportingUrl] = useState(false)
@@ -496,7 +495,7 @@ export default function TrainingTab() {
       })
 
       try {
-        const data = await trainWithFile(file, chunkStrategy)
+        const data = await trainWithFile(file)
 
         // Check if it was a partial upload (timeout)
         if (data.partial) {
@@ -570,7 +569,7 @@ export default function TrainingTab() {
         message: `All files failed to process: ${errors.join(', ')}`,
       })
     }
-  }, [fetchStats, setUploadStatus, chunkStrategy, fetchTrainedFiles])
+  }, [fetchStats, setUploadStatus, fetchTrainedFiles])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -801,59 +800,6 @@ export default function TrainingTab() {
           </CardDescription>
         </CardHeader>
         <CardContent className="p-4 sm:p-6">
-          {/* Chunking Strategy Selector */}
-          <div className="mb-6 p-4 bg-slate-800/50 rounded-lg border border-white/10">
-            <label className="block text-sm font-medium text-white mb-3">
-              Text Extraction Strategy
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <button
-                type="button"
-                onClick={() => setChunkStrategy('word')}
-                disabled={uploadStatus.status === 'uploading'}
-                className={`p-3 rounded-lg border-2 transition-all text-left ${chunkStrategy === 'word'
-                  ? 'border-blue-500 bg-blue-500/20 ring-2 ring-blue-500/50'
-                  : 'border-white/20 hover:border-white/40 hover:bg-white/5'
-                  } ${uploadStatus.status === 'uploading' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-              >
-                <div className="font-medium text-white text-sm">Word by Word</div>
-                <div className="text-xs text-white/60 mt-1">
-                  Extract individual words from the text
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setChunkStrategy('sentence')}
-                disabled={uploadStatus.status === 'uploading'}
-                className={`p-3 rounded-lg border-2 transition-all text-left ${chunkStrategy === 'sentence'
-                  ? 'border-blue-500 bg-blue-500/20 ring-2 ring-blue-500/50'
-                  : 'border-white/20 hover:border-white/40 hover:bg-white/5'
-                  } ${uploadStatus.status === 'uploading' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-              >
-                <div className="font-medium text-white text-sm">Sentence by Sentence</div>
-                <div className="text-xs text-white/60 mt-1">
-                  Extract complete sentences (., !, ?)
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setChunkStrategy('smart')}
-                disabled={uploadStatus.status === 'uploading'}
-                className={`p-3 rounded-lg border-2 transition-all text-left ${chunkStrategy === 'smart'
-                  ? 'border-blue-500 bg-blue-500/20 ring-2 ring-blue-500/50'
-                  : 'border-white/20 hover:border-white/40 hover:bg-white/5'
-                  } ${uploadStatus.status === 'uploading' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-              >
-                <div className="font-medium text-white text-sm">Smart Mode ⭐</div>
-                <div className="text-xs text-white/60 mt-1">
-                  Words + phrases + sentences (recommended)
-                </div>
-              </button>
-            </div>
-          </div>
-
           <div
             {...getRootProps()}
             className={`

@@ -4,6 +4,10 @@ Allow: /
 # Block access to API routes (optional - remove if you want APIs indexed)
 Disallow: /api/
 
+# Allow AI-readable spec endpoints
+Allow: /api/openapi
+Allow: /llms.txt
+
 # Block access to admin/debug routes
 Disallow: /_next/
 Disallow: /admin

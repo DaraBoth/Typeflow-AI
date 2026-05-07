@@ -1,0 +1,164 @@
+# TypeFlow AI
+
+> TypeFlow AI is an intelligent autocomplete, phrase suggestion, and chat API powered by a custom sentence-level vector knowledge base. It lets developers embed AI writing assistance and domain-specific chat into any application.
+
+Base URL: https://typeflow-ai.vercel.app
+
+## Authentication
+
+All `/api/public/*` endpoints require an API key.
+
+Header format:
+```
+Authorization: Bearer tk_live_YOUR_API_KEY
+```
+
+API keys are generated via `POST /api/keys/generate` (no auth required for key generation).
+
+---
+
+## Endpoints
+
+### POST /api/keys/generate
+Generate a new API key. No authentication required.
+
+Request body (JSON):
+- `name` string REQUIRED — Label for this key (min 3 chars)
+- `rateLimit` integer OPTIONAL — Max requests per hour (default: 1000)
+- `allowedEndpoints` string[] OPTIONAL — Subset of ["complete-word","suggest-phrase","chat"] (default: all)
+- `expiresInDays` integer OPTIONAL — Key TTL in days (omit for no expiry)
+- `metadata` object OPTIONAL — Free-form JSON (e.g. email, company)
+
+Response:
+```json
+{
+  "success": true,
+  "apiKey": "tk_live_XyZ123...",
+  "keyInfo": {
+    "id": "uuid",
+    "name": "My App",
+    "keyPrefix": "tk_live_XyZ",
+    "rateLimit": 1000,
+    "allowedEndpoints": ["complete-word","suggest-phrase","chat"],
+    "expiresAt": "2027-01-30T00:00:00Z",
+    "createdAt": "2026-01-30T00:00:00Z"
+  }
+}
+```
+
+IMPORTANT: Save the apiKey immediately — it is only shown once.
+
+---
+
+### POST /api/public/complete-word
+Complete an incomplete word being typed, using the trained knowledge base.
+
+Headers: Authorization: Bearer YOUR_API_KEY
+
+Request body (JSON):
+- `text` string REQUIRED — Full text context so far
+- `incompleteWord` string REQUIRED — The partial word the user is typing
+- `limit` integer OPTIONAL — Max suggestions returned (default: 5, max: 10)
+
+Response:
+```json
+{
+  "success": true,
+  "suggestions": [
+    { "text": "apples", "type": "word" },
+    { "text": "application", "type": "word" }
+  ],
+  "count": 2,
+  "metadata": { "responseTime": "245ms", "apiVersion": "1.0" }
+}
+```
+
+---
+
+### POST /api/public/suggest-phrase
+Suggest a phrase to continue the user's text, using the trained knowledge base.
+
+Headers: Authorization: Bearer YOUR_API_KEY
+
+Request body (JSON):
+- `text` string REQUIRED — The text written so far
+- `limit` integer OPTIONAL — Max suggestions returned (default: 5, max: 10)
+
+Response:
+```json
+{
+  "success": true,
+  "suggestions": [
+    { "text": "a subset of artificial intelligence", "type": "phrase" },
+    { "text": "becoming increasingly important", "type": "phrase" }
+  ],
+  "count": 2,
+  "metadata": { "responseTime": "312ms", "apiVersion": "1.0" }
+}
+```
+
+---
+
+### POST /api/public/chat
+Send a message and receive an AI response grounded in the trained knowledge base.
+
+Headers: Authorization: Bearer YOUR_API_KEY
+
+Request body (JSON):
+- `message` string REQUIRED — The user's message
+- `conversationHistory` array OPTIONAL — Previous turns: [{ "role": "user"|"assistant", "content": "string" }]
+
+Response:
+```json
+{
+  "success": true,
+  "response": "Machine learning is a subset of artificial intelligence...",
+  "metadata": {
+    "contextUsed": true,
+    "chunksRetrieved": 3,
+    "responseTime": "1245ms",
+    "apiVersion": "1.0"
+  }
+}
+```
+
+---
+
+## Error Responses
+
+All endpoints return errors in this shape:
+```json
+{ "error": "Error Title", "message": "Human-readable explanation" }
+```
+
+Common HTTP status codes:
+- 400 Bad Request — missing or invalid parameters
+- 401 Unauthorized — missing or invalid API key
+- 403 Forbidden — key does not have access to this endpoint
+- 429 Too Many Requests — rate limit exceeded
+- 500 Internal Server Error — server-side failure
+
+---
+
+## Knowledge Base
+
+TypeFlow AI stores its knowledge as individual sentences, each linked to a source file with metadata:
+- `filename` — name of the uploaded document or Google Doc
+- `uploaded_at` — when the document was imported
+- `description` — auto-generated summary of the document's content
+
+This metadata is used to give AI responses full source attribution.
+
+---
+
+## OpenAPI Spec
+
+Machine-readable OpenAPI 3.0 JSON spec available at:
+GET https://typeflow-ai.vercel.app/api/openapi
+
+---
+
+## Human Docs
+
+Full interactive documentation available at:
+https://typeflow-ai.vercel.app/docs
