@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
 
     // If a trained_files row already exists for this doc, delete it (and its sentences via cascade)
     // so the user can re-sync the latest version
-    const { data: existingFile } = await supabase
+    const { data: existingFile } = await (supabase as any)
       .from('trained_files')
       .select('id')
       .eq('filename', docTitle)
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
 
     if (existingFile) {
       console.log(`[TrainURL] Re-syncing existing file "${docTitle}", removing old sentences`)
-      await supabase.from('trained_files').delete().eq('id', (existingFile as any).id)
+      await (supabase as any).from('trained_files').delete().eq('id', existingFile.id)
     }
 
     const sentences = extractSentences(extractedText)
@@ -144,11 +144,11 @@ export async function POST(request: NextRequest) {
     const uploadedAt = new Date().toISOString()
 
     // Create trained_files row
-    const { data: trainedFile, error: fileInsertError } = await supabase
+    const { data: trainedFile, error: fileInsertError } = await (supabase as any)
       .from('trained_files')
       .insert({
         filename: docTitle,
-        storage_path: null, // no storage upload for URL-based docs
+        storage_path: null,
         file_type: 'application/vnd.google-apps.document',
         file_size: extractedText.length,
         description,
@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
     for (let batchStart = 0; batchStart < sentences.length; batchStart += BATCH_SIZE) {
       if (Date.now() - startTime > TIMEOUT_THRESHOLD) {
         const charsSoFar = inserted.reduce((s, c) => s + (c?.content?.length ?? 0), 0)
-        await supabase
+        await (supabase as any)
           .from('trained_files')
           .update({ sentence_count: inserted.length, character_count: charsSoFar })
           .eq('id', fileId)
@@ -237,7 +237,7 @@ export async function POST(request: NextRequest) {
     }
 
     const totalCharacters = inserted.reduce((s, c) => s + (c?.content?.length ?? 0), 0)
-    await supabase
+    await (supabase as any)
       .from('trained_files')
       .update({ sentence_count: inserted.length, character_count: totalCharacters })
       .eq('id', fileId)
