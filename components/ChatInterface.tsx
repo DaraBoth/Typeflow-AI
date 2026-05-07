@@ -342,8 +342,8 @@ export default function ChatInterface() {
 
           {/* Help Text */}
           <p className="mt-2 text-xs text-muted-foreground">
-            <span className="hidden sm:inline">Tip: Ask about your uploaded documents or any general question. The AI will use your knowledge base when relevant.</span>
-            <span className="sm:hidden">Ask about your documents or general questions</span>
+            <span className="hidden sm:inline">Tip: Ask questions about your uploaded documents. The AI answers only from your knowledge base.</span>
+            <span className="sm:hidden">Ask questions about your uploaded documents</span>
           </p>
         </CardContent>
       </Card>

@@ -36,8 +36,8 @@ export async function POST(request: NextRequest) {
       // Query vector database for relevant context
       const { data, error } = await supabase.rpc('match_chunks' as any, {
         query_embedding: embedding,
-        match_threshold: 0.3, // Lower threshold for more matches
-        match_count: 5,
+        match_threshold: 0.1,
+        match_count: 8,
       } as any)
 
       if (!error && data) {
