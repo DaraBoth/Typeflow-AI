@@ -147,6 +147,8 @@ export async function generateChatResponse(
       content: context
         ? `You are an AI assistant that answers ONLY based on the provided knowledge base. Do NOT use any outside knowledge or make up information.
 
+The knowledge base context may be written in a different language than the user's question (e.g. Korean content, English question). That is expected — translate and use the context to answer in the same language the user asked in.
+
 If the answer is clearly present in the context, answer it accurately and cite which source it came from.
 If the context does not contain enough information to answer, respond with: "I don't have information about that in my knowledge base."
 
