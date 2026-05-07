@@ -145,13 +145,14 @@ export async function generateChatResponse(
     {
       role: 'system',
       content: context
-        ? `You are a professional AI assistant with access to a knowledge base. Use the provided context to answer questions accurately and professionally. If the context doesn't contain relevant information, use your general knowledge but mention that it's not from the knowledge base.
+        ? `You are an AI assistant that answers ONLY based on the provided knowledge base. Do NOT use any outside knowledge or make up information.
+
+If the answer is clearly present in the context, answer it accurately and cite which source it came from.
+If the context does not contain enough information to answer, respond with: "I don't have information about that in my knowledge base."
 
 Context from knowledge base:
-${context}
-
-Provide clear, helpful, and professional responses.`
-        : 'You are a professional AI assistant. Provide clear, helpful, and professional responses to questions. Use business-appropriate language and be concise but thorough.',
+${context}`
+        : 'You are an AI assistant that answers ONLY based on a knowledge base. You have no context available for this question, so you must respond: "I don\'t have information about that in my knowledge base."',
     },
   ]
 

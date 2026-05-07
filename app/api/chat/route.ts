@@ -63,10 +63,20 @@ export async function POST(request: NextRequest) {
       // Continue without context if embedding fails
     }
 
-    // Generate AI response with context
+    // If no knowledge base context found, return a direct "no knowledge" response
+    if (!usedKnowledgeBase) {
+      return NextResponse.json({
+        response: "I don't have information about that in my knowledge base.",
+        usedKnowledgeBase: false,
+        contextChunks: 0,
+        matches: [],
+      })
+    }
+
+    // Generate AI response strictly from knowledge base context
     const aiResponse = await generateChatResponse(
       message,
-      context || undefined,
+      context,
       conversationHistory
     )
 

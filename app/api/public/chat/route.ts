@@ -66,7 +66,23 @@ export async function POST(request: NextRequest) {
       ? chunks.map((chunk: any) => chunk.content).join('\n\n')
       : null
 
-    // Generate chat response
+    // If no knowledge base context found, return a direct "no knowledge" response
+    if (!context) {
+      return NextResponse.json(
+        {
+          success: true,
+          response: "I don't have information about that in my knowledge base.",
+          metadata: {
+            contextUsed: false,
+            chunksRetrieved: 0,
+            responseTime: `${Date.now() - startTime}ms`,
+            apiVersion: '1.0'
+          }
+        }
+      )
+    }
+
+    // Generate chat response strictly from knowledge base context
     const response = await generateChatResponse(message, conversationHistory, context)
 
     const responseTime = Date.now() - startTime
