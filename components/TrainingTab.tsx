@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Upload, FileText, CheckCircle2, XCircle, Loader2, Database, FileStack, Calendar, BarChart3, Trash2, AlertTriangle, Eye, Download, BrainCircuit, File as FileIcon } from 'lucide-react'
+import { Upload, FileText, CheckCircle2, XCircle, Loader2, Database, FileStack, Calendar, BarChart3, Trash2, AlertTriangle, Eye, Download, BrainCircuit, File as FileIcon, Link, RefreshCw } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import ShimmerButton from '@/components/ui/shimmer-button'
 import NumberTicker from '@/components/ui/number-ticker'
@@ -26,7 +26,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { toast } from 'sonner'
-import { trainWithFile, getTrainingStats, deleteTrainingFile, viewFileContent, downloadFile, triggerFileDownload, verifyAdminPassword, type TrainingStats as ITrainingStats } from '@/services'
+import { trainWithFile, trainWithGoogleDocsUrl, getTrainingStats, deleteTrainingFile, viewFileContent, downloadFile, triggerFileDownload, verifyAdminPassword, type TrainingStats as ITrainingStats } from '@/services'
 
 interface UploadStatus {
   status: 'idle' | 'uploading' | 'success' | 'error'
@@ -60,6 +60,8 @@ export default function TrainingTab() {
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
   const [chunkStrategy, setChunkStrategy] = useState<'word' | 'sentence' | 'smart'>('smart')
   const [activeFiles, setActiveFiles] = useState<ActiveFile[]>([])
+  const [googleDocsUrl, setGoogleDocsUrl] = useState('')
+  const [importingUrl, setImportingUrl] = useState(false)
 
   // Refs for Animated Beam (Upload)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -589,6 +591,46 @@ export default function TrainingTab() {
     fileRefs.current = {}
   }
 
+  const handleGoogleDocsImport = useCallback(async () => {
+    const trimmed = googleDocsUrl.trim()
+    if (!trimmed) return
+
+    if (!trimmed.includes('docs.google.com') && !trimmed.includes('drive.google.com')) {
+      toast.error('Invalid URL', { description: 'Please paste a Google Docs or Google Drive link.' })
+      return
+    }
+
+    setImportingUrl(true)
+    const toastId = toast.loading('Importing Google Doc…', { description: 'Fetching content from Google Docs' })
+
+    try {
+      const data = await trainWithGoogleDocsUrl(trimmed)
+
+      if (data.partial) {
+        toast.warning('Partial Import', {
+          id: toastId,
+          description: `Processed ${data.processed}/${data.total} sentences. Re-submit the link to continue.`,
+          duration: 10000,
+        })
+      } else {
+        toast.success(data.isUpdate ? 'Document Re-synced' : 'Document Imported', {
+          id: toastId,
+          description: `"${data.filename}" — ${data.sentences} sentences stored`,
+        })
+        setGoogleDocsUrl('')
+      }
+
+      await Promise.all([fetchStats(), fetchTrainedFiles()])
+    } catch (error: any) {
+      toast.error('Import Failed', {
+        id: toastId,
+        description: error.message || 'Could not import the Google Doc.',
+      })
+    } finally {
+      setImportingUrl(false)
+    }
+  }, [googleDocsUrl, fetchStats, fetchTrainedFiles])
+
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* AI Provider Badge & OCR Badge */}
@@ -695,6 +737,49 @@ export default function TrainingTab() {
           </>
         )}
       </div>
+
+      <Card className="border-white/10 bg-white/5 backdrop-blur-xl relative overflow-hidden">
+        <BorderBeam size={250} duration={15} delay={5} />
+        <CardHeader className="p-4 sm:p-6">
+          <Sparkles className="inline-block" density={40} size={1} speed={1.2} color="#34d399">
+            <CardTitle className="text-xl sm:text-2xl bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent flex items-center gap-2">
+              <Link className="h-5 w-5 text-emerald-400" />
+              Import from Google Docs
+            </CardTitle>
+          </Sparkles>
+          <CardDescription className="text-xs sm:text-sm">
+            Paste a Google Docs link to import its content directly — no download needed. Re-paste the same link anytime to sync the latest version.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 sm:p-6 pt-0">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1 relative">
+              <Link className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30 pointer-events-none" />
+              <input
+                type="url"
+                value={googleDocsUrl}
+                onChange={e => setGoogleDocsUrl(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleGoogleDocsImport() }}
+                placeholder="https://docs.google.com/document/d/..."
+                disabled={importingUrl}
+                className="w-full pl-9 pr-4 py-2.5 rounded-lg bg-white/5 border border-white/15 text-sm text-white placeholder:text-white/25 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 disabled:opacity-50 transition-all"
+              />
+            </div>
+            <button
+              onClick={handleGoogleDocsImport}
+              disabled={importingUrl || !googleDocsUrl.trim()}
+              className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-400 font-medium text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+            >
+              {importingUrl
+                ? <><Loader2 className="h-4 w-4 animate-spin" /> Importing…</>
+                : <><RefreshCw className="h-4 w-4" /> Import / Sync</>}
+            </button>
+          </div>
+          <p className="mt-3 text-[11px] text-white/30">
+            The document must be shared as <span className="text-emerald-400/70 font-medium">"Anyone with the link can view"</span> in Google Docs sharing settings.
+          </p>
+        </CardContent>
+      </Card>
 
       <Card className="border-white/10 bg-white/5 backdrop-blur-xl relative overflow-hidden">
         <BorderBeam size={250} duration={15} delay={0} />

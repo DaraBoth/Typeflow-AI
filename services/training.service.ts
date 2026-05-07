@@ -115,6 +115,24 @@ export async function getTrainingStats(): Promise<TrainingStats> {
 }
 
 /**
+ * Train AI from a Google Docs URL
+ */
+export async function trainWithGoogleDocsUrl(url: string): Promise<any> {
+  const response = await fetch('/api/train-url', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: response.statusText }))
+    throw new Error(error.error || 'Failed to import Google Doc')
+  }
+
+  return response.json()
+}
+
+/**
  * View file content
  */
 export async function viewFileContent(filename: string): Promise<{ content: string }> {
