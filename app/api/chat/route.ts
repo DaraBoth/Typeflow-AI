@@ -29,38 +29,43 @@ export async function POST(request: NextRequest) {
     let usedKnowledgeBase = false
     let matches: any[] = []
 
-    try {
-      // Generate embedding for the user's message
-      const embedding = await generateEmbedding(message)
+    // Generate embedding for the user's message
+    const embedding = await generateEmbedding(message)
 
-      // Query vector database for relevant context
-      const { data, error } = await supabase.rpc('match_chunks' as any, {
-        query_embedding: embedding,
-        match_threshold: 0.1,
-        match_count: 8,
-      } as any)
+    // Query vector database for relevant context
+    const { data, error } = await supabase.rpc('match_chunks' as any, {
+      query_embedding: embedding,
+      match_threshold: 0.1,
+      match_count: 8,
+    } as any)
 
-      if (!error && data) {
-        const chunks = data as any[]
-        if (chunks.length > 0) {
-          usedKnowledgeBase = true
-          matches = chunks
+    if (error) {
+      console.error('Error searching knowledge base:', error)
+      return NextResponse.json(
+        { error: 'Failed to search knowledge base', detail: error.message },
+        { status: 500 }
+      )
+    }
 
-          // Build context with file source metadata so the AI knows where each sentence came from
-          context = chunks
-            .map((chunk: any, index: number) => {
-              const uploadedDate = chunk.uploaded_at
-                ? new Date(chunk.uploaded_at).toLocaleDateString()
-                : 'unknown date'
-              const sourceLine = `[Source: ${chunk.filename || 'unknown'} | Uploaded: ${uploadedDate}${chunk.file_description ? ` | About: ${chunk.file_description}` : ''}]`
-              return `[${index + 1}] ${sourceLine}\n${chunk.content}`
-            })
-            .join('\n\n')
-        }
+    if (data) {
+      const chunks = data as any[]
+      if (chunks.length > 0) {
+        usedKnowledgeBase = true
+        matches = chunks
+
+        // Build context with file source metadata so the AI knows where each sentence came from
+        context = chunks
+          .map((chunk: any, index: number) => {
+            // Support both new match_chunks (direct columns) and old (metadata JSONB fallback)
+            const filename = chunk.filename || chunk.metadata?.filename || 'unknown'
+            const rawDate = chunk.uploaded_at || chunk.metadata?.uploaded_at
+            const uploadedDate = rawDate ? new Date(rawDate).toLocaleDateString() : 'unknown date'
+            const description = chunk.file_description || chunk.metadata?.file_description || ''
+            const sourceLine = `[Source: ${filename} | Uploaded: ${uploadedDate}${description ? ` | About: ${description}` : ''}]`
+            return `[${index + 1}] ${sourceLine}\n${chunk.content}`
+          })
+          .join('\n\n')
       }
-    } catch (embeddingError) {
-      console.error('Error searching knowledge base:', embeddingError)
-      // Continue without context if embedding fails
     }
 
     // If no knowledge base context found, return a direct "no knowledge" response
