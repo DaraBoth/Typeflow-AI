@@ -19,7 +19,7 @@ export async function DELETE(request: NextRequest) {
     console.log(`[Forget] Attempting to delete file: ${filename}`)
 
     // Fetch the trained_files row so we have the storage_path
-    const { data: trainedFileRaw, error: fetchError } = await supabase
+    const { data: trainedFileRaw, error: fetchError } = await (supabase as any)
       .from('trained_files')
       .select('id, storage_path')
       .eq('filename', filename)
@@ -33,7 +33,7 @@ export async function DELETE(request: NextRequest) {
     const storagePath = trainedFile?.storage_path || null
 
     // Delete from trained_files — ON DELETE CASCADE removes all sentences in chunks_table
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('trained_files')
       .delete()
       .eq('filename', filename)

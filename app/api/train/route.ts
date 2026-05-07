@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     let existingManualContent = ''
     if (isManualTraining) {
       console.log('[Train] Checking for existing manual training data...')
-      const { data: existingFile } = await supabase
+      const { data: existingFile } = await (supabase as any)
         .from('trained_files')
         .select('id')
         .eq('filename', file.name)
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
           existingManualContent = existingChunks.map((c: any) => c.content).join('\n')
           console.log(`[Train] Found ${existingChunks.length} existing sentences to carry forward`)
           // Deleting trained_files row cascades to chunks_table via file_id FK
-          await supabase.from('trained_files').delete().eq('id', existingFile.id)
+          await (supabase as any).from('trained_files').delete().eq('id', existingFile.id)
         }
       }
     }
@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
     const uploadedAt = new Date().toISOString()
 
     // Create the trained_files row first — every sentence will reference it
-    const { data: trainedFile, error: fileInsertError } = await supabase
+    const { data: trainedFile, error: fileInsertError } = await (supabase as any)
       .from('trained_files')
       .insert({
         filename: file.name,
@@ -190,7 +190,7 @@ export async function POST(request: NextRequest) {
       if (Date.now() - startTime > TIMEOUT_THRESHOLD) {
         console.log(`[Train] Timeout after ${processedCount}/${sentences.length} sentences`)
         const charsSoFar = insertedChunks.reduce((s, c) => s + (c?.content?.length ?? 0), 0)
-        await supabase
+        await (supabase as any)
           .from('trained_files')
           .update({ sentence_count: insertedChunks.length, character_count: charsSoFar })
           .eq('id', fileId)
@@ -255,7 +255,7 @@ export async function POST(request: NextRequest) {
 
     // Update sentence_count and character_count on the trained_files row
     const totalCharacters = insertedChunks.reduce((s, c) => s + (c?.content?.length ?? 0), 0)
-    await supabase
+    await (supabase as any)
       .from('trained_files')
       .update({ sentence_count: insertedChunks.length, character_count: totalCharacters })
       .eq('id', fileId)
